@@ -3,8 +3,9 @@ import requests  # Para fazer a requisição HTTP (a "Voz")
 from flask import Flask, request, jsonify  # Para o servidor web (a "Orelha")
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain.chains import ConversationChain
+from langchain.chains.conversation.base import ConversationChain
 from langchain.memory import ConversationBufferMemory
+
 
 # --- 1. CONFIGURAÇÃO INICIAL ---
 

@@ -1,6 +1,6 @@
 flask
-langchain-openai
-langchain
+langchain==0.2.14
+langchain-openai==0.1.7
 python-dotenv
 requests
 gunicorn
