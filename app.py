@@ -91,13 +91,8 @@ def receber_mensagem():
         
         # Prepara o JSON da mensagem de resposta (formato da Evolution)
         payload_resposta = {
-            "number": numero_destino,
-            "options": {
-                "delay": 1200 # Um atraso de 1.2s para parecer mais humano
-            },
-            "textMessage": {
-                "text": resposta_ia_texto
-            }
+    "number": numero_destino,
+    "text": resposta_ia_texto
         }
 
         # Envia a resposta!
