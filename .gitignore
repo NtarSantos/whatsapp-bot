@@ -1,0 +1,8 @@
+# Arquivo .env (contém chaves secretas)
+.env
+
+# Pasta do ambiente virtual (contém bibliotecas)
+venv/
+
+# Pastas do Python (cache)
+__pycache__/
