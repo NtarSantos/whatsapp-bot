@@ -1,12 +1,18 @@
-# 1. Comece com uma imagem oficial leve do Python 3.12
+# 1. Comece com a imagem oficial do Python 3.12
 FROM python:3.12-slim
-# 3. Defina o diretório de trabalho dentro do contêiner
+
+# 2. Defina o diretório de trabalho
 WORKDIR /app
-# 4. Copie *apenas* o requirements.txt primeiro (para cache)
+
+# 3. Copie o requirements.txt primeiro (para cache)
 COPY requirements.txt .
-# 5. Crie o venv e instale as bibliotecas DENTRO dele (nosso comando antigo)
-RUN python3.12 -m venv venv && ./venv/bin/pip install -r requirements.txt
-# 6. Copie o *resto* do seu código (app.py)
+
+# 4. Instale as bibliotecas GLOBALMENTE (sem venv)
+# (Note que é 'pip' e 'gunicorn', não './venv/bin/...')
+RUN pip install -r requirements.txt
+
+# 5. Copie o resto do seu código (app.py, etc)
 COPY . .
-# 7. Diga ao contêiner para usar o Gunicorn de dentro do venv
-CMD ["./venv/bin/python", "-m", "gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "app:app"]
+
+# 6. Diga ao contêiner para rodar o Gunicorn (que agora está global)
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "app:app"]
