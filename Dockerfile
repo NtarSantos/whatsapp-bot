@@ -9,4 +9,4 @@ RUN python3.12 -m venv venv && ./venv/bin/pip install -r requirements.txt
 # 6. Copie o *resto* do seu código (app.py)
 COPY . .
 # 7. Diga ao contêiner para usar o Gunicorn de dentro do venv
-CMD ["./venv/bin/gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "app:app"]
+CMD ["./venv/bin/python", "-m", "gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "app:app"]
