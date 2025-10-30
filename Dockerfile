@@ -9,7 +9,7 @@ COPY requirements.txt .
 
 # 4. Instale as bibliotecas GLOBALMENTE (sem venv)
 # (Note que é 'pip' e 'gunicorn', não './venv/bin/...')
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 5. Copie o resto do seu código (app.py, etc)
 COPY . .
