@@ -11,6 +11,8 @@ from langchain_openai import ChatOpenAI
 # Adicione estas duas novas importações do LangChain
 from langchain_core.messages import messages_from_dict, messages_to_dict
 # --- 1. CONFIGURAÇÃO INICIAL ---
+from datetime import datetime
+import pytz
 
 load_dotenv()
 
@@ -70,6 +72,27 @@ def receber_mensagem():
         numero_destino = dados_msg.get("key", {}).get("remoteJid")
         mensagem_usuario = dados_msg.get("message", {}).get("conversation")
 
+        # --- NOVO: INJETAR DATA/HORA ATUAL ---
+    # 1. Define o fuso horário correto (Brasil - São Paulo)
+        fuso_horario_sp = pytz.timezone("America/Sao_Paulo")
+
+    # 2. Pega a data e hora atuais nesse fuso
+        agora_sp = datetime.now(fuso_horario_sp)
+
+    # 3. Formata como um texto legível
+        agora_formatado = agora_sp.strftime("%A, %d de %B de %Y, %H:%M:%S (%Z)")
+
+        print(f"Injetando contexto de hora: {agora_formatado}")
+
+    # 4. Cria o "super-prompt" que dá o contexto para a IA
+        mensagem_com_contexto = f"""
+    (Contexto importante para a IA: A data e hora atual no Brasil é: {agora_formatado}. 
+    Responda à pergunta do usuário abaixo com base nesse contexto.)
+
+    Pergunta do Usuário: "{mensagem_usuario}"
+    """
+    # --- FIM DO NOVO BLOCO ---
+
         if not mensagem_usuario or not numero_destino:
             print("Ignorando (sem texto ou sem número de destino)")
             return jsonify({"status": "ignorado"}), 200
@@ -120,7 +143,7 @@ def receber_mensagem():
         # 4. Invoca o cérebro (MUDANÇA IMPORTANTE: usa um dicionário)
         # A versão antiga do 'invoke' com string está obsoleta.
         # O 'invoke' espera um dicionário. A 'input_key' padrão é "input".
-        resposta_ia_obj = conversa_usuario.invoke({"input": mensagem_usuario})
+        resposta_ia_obj = conversa_usuario.invoke({"input": mensagem_com_contexto})
         resposta_ia_texto = resposta_ia_obj['response']
         print(f"Resposta da IA: {resposta_ia_texto}")
 
