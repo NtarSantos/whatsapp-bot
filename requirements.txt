@@ -5,3 +5,4 @@ python-dotenv
 requests
 gunicorn
 redis
+langchain-community==0.2.0
