@@ -1,12 +1,15 @@
 import os
 import requests
-import redis # <-- NOVO: Importa a biblioteca do Redis
+import redis
+import json # <-- ADICIONE ESTA LINHA
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from langchain.chains import ConversationChain
-from langchain.memory import ConversationBufferMemory
+# Mude a linha abaixo para importar ChatMessageHistory
+from langchain.memory import ConversationBufferMemory, ChatMessageHistory
 from langchain_openai import ChatOpenAI
-
+# Adicione estas duas novas importações do LangChain
+from langchain_core.messages import messages_from_dict, messages_to_dict
 # --- 1. CONFIGURAÇÃO INICIAL ---
 
 load_dotenv()
@@ -44,9 +47,11 @@ app = Flask(__name__)
 
 # --- 4. A ROTA DO WEBHOOK (Versão com Memória Única) ---
 
+# --- 4. A ROTA DO WEBHOOK (Versão com Memória JSON no Redis) ---
+
 @app.route("/webhook", methods=["POST"])
 def receber_mensagem():
-    
+
     print(">>> Webhook da Evolution API recebido!")
     dados_webhook = request.json
 
@@ -57,43 +62,53 @@ def receber_mensagem():
             return jsonify({"status": "ignorado"}), 200
 
         dados_msg = dados_webhook.get("data", {})
-        
+
         if dados_msg.get("key", {}).get("fromMe") == True:
             print("Ignorando mensagem (fromMe é true)")
             return jsonify({"status": "ignorado"}), 200
 
-        # A "Chave" do nosso banco de dados: o número do usuário
         numero_destino = dados_msg.get("key", {}).get("remoteJid")
         mensagem_usuario = dados_msg.get("message", {}).get("conversation")
 
         if not mensagem_usuario or not numero_destino:
             print("Ignorando (sem texto ou sem número de destino)")
             return jsonify({"status": "ignorado"}), 200
-            
+
         print(f"Mensagem de {numero_destino}: {mensagem_usuario}")
 
         # --- ETAPA 2: "CÉREBRO" (COM MEMÓRIA DINÂMICA DO REDIS) ---
-        
+
         if not r: # Se o Redis não conectou, pare aqui
              print("ERRO: Sem conexão com o Redis para carregar/salvar memória.")
              return jsonify({"status": "erro_redis"}), 500
 
-        # 1. Cria uma memória nova e vazia para este pedido
-        memoria_usuario = ConversationBufferMemory()
-        
-        # 2. Tenta carregar o histórico antigo do Redis
+        # --- LÓGICA DE CARREGAMENTO (CORRIGIDA) ---
+        memoria_usuario = None
         try:
-            # Usamos o 'numero_destino' como a chave única
-            historico_string = r.get(numero_destino)
-            if historico_string:
-                # Carrega o histórico salvo na memória
-                memoria_usuario.buffer = historico_string
+            # 1. Tenta buscar o *JSON* do histórico no Redis
+            historico_json_string = r.get(numero_destino)
+
+            if historico_json_string:
+                # 2. Transforma o texto JSON numa lista de dados do Python
+                messages_data = json.loads(historico_json_string)
+                # 3. Transforma os dados em objetos de Mensagem (HumanMessage, AIMessage)
+                messages_carregados = messages_from_dict(messages_data)
+                # 4. Cria o objeto de memória *com* o histórico carregado
+                memoria_usuario = ConversationBufferMemory(
+                    chat_memory=ChatMessageHistory(messages=messages_carregados),
+                    return_messages=True # É uma boa prática
+                )
                 print(f"Histórico carregado para: {numero_destino}")
             else:
+                # Se não há histórico, cria uma memória vazia
+                memoria_usuario = ConversationBufferMemory(return_messages=True)
                 print(f"Nenhum histórico encontrado. Nova conversa para: {numero_destino}")
+
         except Exception as e:
-            print(f"ERRO ao ler do Redis: {e}")
-            # Continua com a memória vazia
+            print(f"ERRO ao ler ou recriar do Redis: {e}")
+            memoria_usuario = ConversationBufferMemory(return_messages=True) # Continua com memória vazia
+
+        # --- FIM DA LÓGICA DE CARREGAMENTO ---
 
         # 3. Cria uma CADEIA DE CONVERSA *SÓ PARA ESTE USUÁRIO*
         conversa_usuario = ConversationChain(
@@ -102,23 +117,30 @@ def receber_mensagem():
             verbose=True
         )
 
-        # 4. Invoca o cérebro (igual a antes)
-        resposta_ia_obj = conversa_usuario.invoke(mensagem_usuario)
+        # 4. Invoca o cérebro (MUDANÇA IMPORTANTE: usa um dicionário)
+        # A versão antiga do 'invoke' com string está obsoleta.
+        # O 'invoke' espera um dicionário. A 'input_key' padrão é "input".
+        resposta_ia_obj = conversa_usuario.invoke({"input": mensagem_usuario})
         resposta_ia_texto = resposta_ia_obj['response']
         print(f"Resposta da IA: {resposta_ia_texto}")
 
-        # 5. SALVA o novo histórico de volta no Redis
+        # --- LÓGICA DE SALVAMENTO (CORRIGIDA) ---
         try:
-            # Pega o buffer atualizado (pergunta + resposta)
-            novo_historico_string = conversa_usuario.memory.buffer 
-            # Salva no Redis, usando o número como chave
-            r.set(numero_destino, novo_historico_string)
+            # 5. Pega a *lista de mensagens* da memória (não o texto)
+            novo_historico_msgs = conversa_usuario.memory.chat_memory.messages
+            # 6. Converte os objetos de mensagem para dados (para JSON)
+            messages_data = messages_to_dict(novo_historico_msgs)
+            # 7. Transforma os dados em texto JSON
+            novo_historico_json_string = json.dumps(messages_data)
+            # 8. Salva o JSON no Redis
+            r.set(numero_destino, novo_historico_json_string)
             print(f"Histórico salvo para: {numero_destino}")
         except Exception as e:
             print(f"ERRO ao salvar no Redis: {e}")
+        # --- FIM DA LÓGICA DE SALVAMENTO ---
 
         # --- ETAPA 3: "VOZ" (Igual a antes) ---
-        
+
         headers = { "apikey": EVOLUTION_API_KEY, "Content-Type": "application/json" }
         payload_resposta = {
             "number": numero_destino,
@@ -126,7 +148,7 @@ def receber_mensagem():
         }
         requests.post(EVOLUTION_API_URL, json=payload_resposta, headers=headers)
         print("Resposta enviada para a Evolution API com sucesso!")
-        
+
         return jsonify({"status": "sucesso"}), 200
 
     except Exception as e:
